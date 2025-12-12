@@ -36,9 +36,11 @@
     <!-- Firebase SDK 設定區 (使用 ES Module) -->
     <script type="module">
         // 引入 GoogleAuthProvider 與 signInWithPopup
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+       import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js)";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js)";
+import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js)";
+
+// ... 接著是您的 firebaseConfig 設定 ...
 
         // ==========================================
         // TODO: 請在此填入 Firebase 設定 (從 Console 複製)
@@ -56,7 +58,12 @@
 
         // 檢查設定是否已經填寫
         const isConfigConfigured = !firebaseConfig.apiKey.includes("請貼上");
+// 初始化 App
+const app = initializeApp(firebaseConfig);
 
+// 初始化 Auth (這裡最重要，版本一致後這裡就不會報錯了)
+const auth = getAuth(app); 
+const db = getFirestore(app);
         // 初始化 Firebase 並掛載到 window 物件，讓下面的 Babel 腳本可以使用
         if (isConfigConfigured) {
             try {
@@ -485,3 +492,4 @@
     </script>
 </body>
 </html>
+
