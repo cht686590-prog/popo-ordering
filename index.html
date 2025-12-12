@@ -2,34 +2,42 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>點餐系統 (修復版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PoPo 點餐系統</title>
     <!-- 引入 React 與 Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <!-- 引入 Babel 用來解析 JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* 隱藏捲軸但保留功能 */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    </style>
 </head>
-<body class="bg-gray-100">
-    <div id="root"></div>
+<body class="bg-gray-100 text-gray-800 h-screen overflow-hidden">
+    <div id="root" class="h-full"></div>
 
     <script type="text/babel" data-type="module">
-        // =================================================================
-        // 1. Firebase 核心模組引入 (版本統一為 10.12.2)
-        // =================================================================
+        // ==========================================
+        // 🔴 系統核心設定區 (Firebase Config)
+        // ==========================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        
-        // 補上了 signInAnonymously 避免報錯
         import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        
-        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-        // =================================================================
-        // 2. Firebase 設定檔 (已從您的截圖中還原)
-        // =================================================================
         const firebaseConfig = {
-       apiKey: "AIzaSyDYu_gtcp25wx4S25LubmWSQGRgxLrppy0",
+  apiKey: "AIzaSyDYu_gtcp25wx4S25LubmWSQGRgxLrppy0",
   authDomain: "popo-ordering.firebaseapp.com",
   projectId: "popo-ordering",
   storageBucket: "popo-ordering.firebasestorage.app",
@@ -37,121 +45,859 @@
   appId: "1:44845700960:web:b6fd95203d627cacb67005"
         };
 
-        // =================================================================
-        // 3. 初始化 Firebase
-        // =================================================================
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        console.log("Firebase 連線成功！");
+        // ==========================================
+        // 1. 資料模型與配置 (Data & Configuration)
+        // ==========================================
 
-        // =================================================================
-        // 4. React 應用程式區塊
-        // (確認修復成功後，請將您原本的點餐系統程式碼貼回這裡覆蓋 App 元件)
-        // =================================================================
-        function App() {
+        // 菜單分類
+        const CATEGORIES = [
+            { id: 'hotpot', name: '幸福鍋物', icon: 'fa-fire-burner' },
+            { id: 'square', name: '幸福二次方', icon: 'fa-utensils' },
+            { id: 'pasta', name: '義大利麵/焗烤', icon: 'fa-wheat-awn' },
+            { id: 'riceball', name: '普普飯糰餐', icon: 'fa-bowl-rice' },
+            { id: 'light', name: '輕食總匯/沙拉', icon: 'fa-leaf' },
+            { id: 'fried', name: '炸物/甜點', icon: 'fa-cookie-bite' },
+            { id: 'beverage', name: '單點飲品', icon: 'fa-mug-hot' },
+        ];
+
+        // 飲品資料庫 (用於升級加購)
+        const BEVERAGES_DATA = [
+            { id: 'b01', name: '美式咖啡', price: 110, temp: 'both' },
+            { id: 'b02', name: '原味拿鐵', price: 130, temp: 'both' },
+            { id: 'b03', name: '焦糖拿鐵', price: 150, temp: 'both' },
+            { id: 'b04', name: '卡布奇諾', price: 150, temp: 'both' },
+            { id: 'b05', name: '特選錫蘭紅茶', price: 100, temp: 'both' },
+            { id: 'b06', name: '阿薩姆紅茶', price: 100, temp: 'both' },
+            { id: 'b07', name: '香檸柚茶', price: 100, temp: 'both' },
+            { id: 'b08', name: '鐵觀音', price: 110, temp: 'both' },
+            { id: 'b09', name: '伯爵紅茶', price: 120, temp: 'both' },
+            { id: 'b10', name: '洋甘菊茶', price: 150, temp: 'hotOnly' },
+            { id: 'b11', name: '特選錫蘭奶茶', price: 120, temp: 'both' },
+            { id: 'b12', name: '阿薩姆奶茶', price: 120, temp: 'both' },
+            { id: 'b13', name: '鐵觀音奶茶', price: 130, temp: 'both' },
+            { id: 'b14', name: '伯爵奶茶', price: 140, temp: 'both' },
+            { id: 'b15', name: '日式玄米奶茶', price: 150, temp: 'both' },
+            { id: 'b16', name: '阿華田可可', price: 150, temp: 'both' },
+            { id: 'b17', name: '精力蔬果汁', price: 160, temp: 'iceOnly' },
+            { id: 'b18', name: '富士山蘋果牛奶', price: 130, temp: 'iceOnly' },
+            { id: 'b19', name: '蜂蜜檸檬', price: 130, temp: 'iceOnly' },
+            { id: 'b20', name: '芭樂番茄梅', price: 150, temp: 'iceOnly' },
+            { id: 'b21', name: '香蕉牛奶', price: 130, temp: 'iceOnly' },
+            { id: 'b22', name: '葡萄優格飲', price: 140, temp: 'iceOnly' },
+            { id: 'b23', name: '芒果冰沙', price: 140, temp: 'iceOnly' },
+            { id: 'b24', name: '檸檬優格冰沙', price: 140, temp: 'iceOnly' },
+            { id: 'b25', name: '巧克力可可冰沙', price: 150, temp: 'iceOnly' },
+            { id: 'b26', name: 'OREO餅乾奶昔', price: 160, temp: 'iceOnly' },
+        ];
+
+        // 附餐基本飲料
+        const BASIC_SIDE_DRINKS = [
+            { id: 'bd1', name: '香檸柚茶 (冷)', price: 0 },
+            { id: 'bd2', name: '香檸柚茶 (熱)', price: 0 },
+            { id: 'bd3', name: '紅茶 (冷)', price: 0 },
+            { id: 'bd4', name: '紅茶 (熱)', price: 0 },
+            { id: 'bd5', name: '黑咖啡 (冷)', price: 0 },
+            { id: 'bd6', name: '黑咖啡 (熱)', price: 0 },
+        ];
+
+        // 客製化選項群組
+        const MODIFIER_OPTIONS = {
+            meat: [
+                { id: 'm1', name: '豬肉', price: 0 },
+                { id: 'm2', name: '牛肉', price: 30 },
+                { id: 'm3', name: '海陸豬', price: 60 },
+                { id: 'm4', name: '海陸牛', price: 70 },
+            ],
+            starch: [
+                { id: 's1', name: '白飯', price: 0 },
+                { id: 's2', name: '五穀飯', price: 0 },
+                { id: 's3', name: '冬粉', price: 0 },
+            ],
+            starch_square: [ // 幸福二次方的主食只有兩種
+                { id: 's1', name: '白飯', price: 0 },
+                { id: 's2', name: '五穀飯', price: 0 },
+            ],
+            pot_base: [
+                { id: 'pb1', name: '鮮魚鍋', price: 0 },
+                { id: 'pb2', name: '蔬菜鍋', price: 0 },
+            ],
+            sauce: [
+                { id: 'sc1', name: '青醬', price: 0 },
+                { id: 'sc2', name: '紅醬', price: 0 },
+            ],
+            noodle: [
+                { id: 'n1', name: '細麵', price: 0 },
+                { id: 'n2', name: '寬麵', price: 0 },
+            ],
+            spiciness: [
+                { id: 'sp1', name: '大辣', price: 0 },
+                { id: 'sp2', name: '中辣', price: 0 },
+                { id: 'sp3', name: '小辣', price: 0 },
+            ]
+        };
+
+        // 產品資料 (Products Data)
+        // drinkType: 'set' (套餐含飲品，升級半價) | 'light' (加購半價) | null (無飲品選項)
+        const PRODUCTS_DATA = [
+            // 1. 幸福鍋物
+            { id: 'h01', categoryId: 'hotpot', name: '日式昆布鍋', price: 330, modifierRules: { meat: true, starch: true }, drinkType: 'set' },
+            { id: 'h02', categoryId: 'hotpot', name: '韓式泡菜鍋', price: 330, modifierRules: { meat: true, starch: true }, drinkType: 'set' },
+            { id: 'h03', categoryId: 'hotpot', name: '田園南瓜鍋', price: 340, modifierRules: { meat: true, starch: true }, drinkType: 'set' },
+            { id: 'h04', categoryId: 'hotpot', name: '辛香麻辣鍋', price: 330, modifierRules: { meat: true, starch: true, spiciness: true }, drinkType: 'set' },
+            { id: 'h05', categoryId: 'hotpot', name: '風味牛奶鍋', price: 360, modifierRules: { meat: true, starch: true }, drinkType: 'set' },
+            { id: 'h06', categoryId: 'hotpot', name: '義式番茄鍋', price: 340, modifierRules: { meat: true, starch: true }, drinkType: 'set' },
+
+            // 2. 幸福二次方 (主菜+小湯鍋)
+            { id: 'sq01', categoryId: 'square', name: '蜜汁碳烤豬肋排', price: 490, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq02', categoryId: 'square', name: '香煎厚鮭魚', price: 460, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq03', categoryId: 'square', name: '秘製紹興醉雞', price: 420, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq04', categoryId: 'square', name: '破布子鱈魚', price: 430, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq05', categoryId: 'square', name: '照燒松阪豬', price: 420, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq06', categoryId: 'square', name: '德式鄉村豬腳', price: 430, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq07', categoryId: 'square', name: '法式迷迭香雞腿', price: 370, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq08', categoryId: 'square', name: '泰式檸檬魚', price: 400, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq09', categoryId: 'square', name: '蔥爆野菇牛肉', price: 410, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq10', categoryId: 'square', name: '雲南椒麻雞', price: 380, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+            { id: 'sq11', categoryId: 'square', name: '如意蔬食(全素)', price: 360, modifierRules: { pot_base: true, starch_square: true }, drinkType: 'set' },
+
+            // 3. 義大利麵/焗烤
+            { id: 'p01', categoryId: 'pasta', name: '煙燻鴨胸義大利麵', price: 350, modifierRules: { sauce: true, noodle: true }, drinkType: 'set' },
+            { id: 'p02', categoryId: 'pasta', name: '迷迭雞腿義大利麵', price: 340, modifierRules: { sauce: true, noodle: true }, drinkType: 'set' },
+            { id: 'p03', categoryId: 'pasta', name: '厚切豬排義大利麵', price: 330, modifierRules: { sauce: true, noodle: true }, drinkType: 'set' },
+            { id: 'p04', categoryId: 'pasta', name: '香草蛤蠣義大利麵', price: 320, modifierRules: { sauce: true, noodle: true }, drinkType: 'set' },
+            { id: 'p05', categoryId: 'pasta', name: '嫩煎牛肉義大利麵', price: 350, modifierRules: { sauce: true, noodle: true }, drinkType: 'set' },
+            { id: 'p06', categoryId: 'pasta', name: '素食鮮果義大利麵', price: 320, modifierRules: { sauce: true, noodle: true }, drinkType: 'set' },
+            { id: 'r01', categoryId: 'pasta', name: '匈牙利牛肉焗烤飯', price: 360, modifierRules: {}, drinkType: 'set' },
+            { id: 'r02', categoryId: 'pasta', name: '咖哩雞排焗烤飯', price: 340, modifierRules: {}, drinkType: 'set' },
+            { id: 'r03', categoryId: 'pasta', name: '咖哩豬排焗烤飯', price: 330, modifierRules: {}, drinkType: 'set' },
+            { id: 'r04', categoryId: 'pasta', name: '蔬食咖哩焗烤飯', price: 320, modifierRules: {}, drinkType: 'set' },
+
+            // 4. 普普飯糰餐 (視為 Type B 輕食，因為看起來像套餐，預設含湯)
+            { id: 'rb01', categoryId: 'riceball', name: '豬肋排飯糰餐', price: 330, modifierRules: {}, drinkType: 'light' }, // 特色餐系列加購半價
+            { id: 'rb02', categoryId: 'riceball', name: '迷迭雞腿飯糰餐', price: 280, modifierRules: {}, drinkType: 'light' },
+            { id: 'rb03', categoryId: 'riceball', name: '鹽烤鯖魚飯糰餐', price: 280, modifierRules: {}, drinkType: 'light' },
+
+            // 5. 輕食/沙拉 (加購飲品半價)
+            { id: 'l01', categoryId: 'light', name: '照燒牛肉輕食', price: 280, modifierRules: {}, drinkType: 'light' },
+            { id: 'l02', categoryId: 'light', name: '黃金豬排輕食', price: 260, modifierRules: {}, drinkType: 'light' },
+            { id: 'l03', categoryId: 'light', name: '煙燻雞肉輕食', price: 260, modifierRules: {}, drinkType: 'light' },
+            { id: 'l04', categoryId: 'light', name: '櫻桃鴨胸沙拉', price: 240, modifierRules: {}, drinkType: 'light' },
+            { id: 'l05', categoryId: 'light', name: '季節水果沙拉', price: 220, modifierRules: {}, drinkType: 'light' },
+            { id: 'l06', categoryId: 'light', name: '煙燻雞肉沙拉', price: 230, modifierRules: {}, drinkType: 'light' },
+
+            // 6. 炸物/甜點 (無飲品優惠邏輯)
+            { id: 'f01', categoryId: 'fried', name: '金黃脆薯', price: 100, modifierRules: {}, drinkType: null },
+            { id: 'f02', categoryId: 'fried', name: '酥炸雞米花', price: 100, modifierRules: {}, drinkType: null },
+            { id: 'f03', categoryId: 'fried', name: '美味烤雞翅', price: 160, modifierRules: {}, drinkType: null },
+            { id: 'f04', categoryId: 'fried', name: '招牌甜不辣', price: 100, modifierRules: {}, drinkType: null },
+            { id: 'f05', categoryId: 'fried', name: '美式洋蔥圈', price: 100, modifierRules: {}, drinkType: null },
+            { id: 'f06', categoryId: 'fried', name: '黑心麻吉球', price: 100, modifierRules: {}, drinkType: null },
+            { id: 'f07', categoryId: 'fried', name: '普普綜合拼盤', price: 200, modifierRules: {}, drinkType: null },
+            { id: 'd01', categoryId: 'fried', name: '冰心布朗尼', price: 80, modifierRules: {}, drinkType: null },
+            { id: 'd02', categoryId: 'fried', name: '季節水果鬆餅', price: 240, modifierRules: {}, drinkType: null },
+            { id: 'd03', categoryId: 'fried', name: '冰淇淋鬆餅', price: 240, modifierRules: {}, drinkType: null },
+            
+            // 7. 單點飲品 (將 BEVERAGES_DATA 展開到產品列表)
+            ...BEVERAGES_DATA.map(b => ({
+                id: b.id,
+                categoryId: 'beverage',
+                name: b.name,
+                price: b.price,
+                modifierRules: { temp: b.temp }, // 特殊規則：冷熱
+                drinkType: null
+            }))
+        ];
+
+        // ==========================================
+        // 2. React Context & State Management
+        // ==========================================
+        const MenuContext = React.createContext();
+
+        function MenuProvider({ children }) {
             const [user, setUser] = React.useState(null);
-            const [loading, setLoading] = React.useState(true);
-            const [errorMsg, setErrorMsg] = React.useState("");
+            const [isAdmin, setIsAdmin] = React.useState(false); // 管理員模式開關
+            const [cart, setCart] = React.useState(() => {
+                const saved = localStorage.getItem('popo_cart');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [selectedCategory, setSelectedCategory] = React.useState('hotpot');
+            const [isCartOpen, setIsCartOpen] = React.useState(false);
+            const [customerInfo, setCustomerInfo] = React.useState({ tableNo: '', notes: '' });
 
-            // 監聽登入狀態
             React.useEffect(() => {
-                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-                    setUser(currentUser);
-                    setLoading(false);
-                }, (error) => {
-                    console.error("Auth Error:", error);
-                    setErrorMsg(error.message);
-                    setLoading(false);
+                localStorage.setItem('popo_cart', JSON.stringify(cart));
+            }, [cart]);
+
+            // 監聽 Auth
+            React.useEffect(() => {
+                const unsubscribe = onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    // 簡單的權限判斷：如果是此 email 則為管理員 (您可以修改這裡)
+                    if (u && u.email === 'admin@popo.com') setIsAdmin(true);
                 });
                 return () => unsubscribe();
             }, []);
 
-            // Google 登入功能
-            const handleGoogleLogin = async () => {
-                try {
-                    const provider = new GoogleAuthProvider();
-                    await signInWithPopup(auth, provider);
-                } catch (error) {
-                    console.error("登入失敗", error);
-                    alert("登入失敗: " + error.message);
-                }
+            const addToCart = (item) => {
+                setCart(prev => [...prev, { ...item, cartId: Date.now() }]);
+                setIsCartOpen(true);
             };
 
-            // 匿名登入功能 (備用)
-            const handleAnonymousLogin = async () => {
-                try {
-                    await signInAnonymously(auth);
-                } catch (error) {
-                    console.error("匿名登入失敗", error);
-                    alert("匿名登入失敗: " + error.message);
-                }
+            const removeFromCart = (cartId) => {
+                setCart(prev => prev.filter(item => item.cartId !== cartId));
             };
 
-            if (loading) return <div className="p-10 text-center">系統載入中...</div>;
+            const clearCart = () => setCart([]);
+
+            const submitOrder = async () => {
+                if (cart.length === 0) return alert('購物車是空的');
+                if (!customerInfo.tableNo) return alert('請輸入桌號');
+                
+                try {
+                    await addDoc(collection(db, "orders"), {
+                        items: cart,
+                        tableNo: customerInfo.tableNo,
+                        notes: customerInfo.notes,
+                        total: cart.reduce((sum, item) => sum + item.finalPrice, 0),
+                        status: 'pending',
+                        timestamp: serverTimestamp(),
+                        userId: user ? user.uid : 'anonymous',
+                        userName: user ? user.displayName : 'Guest'
+                    });
+                    alert('訂單已送出！');
+                    clearCart();
+                    setIsCartOpen(false);
+                } catch (e) {
+                    console.error("Error adding document: ", e);
+                    alert("送出失敗: " + e.message);
+                }
+            };
 
             return (
-                <div className="min-h-screen flex flex-col items-center justify-center p-4">
-                    <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
-                        <div className="mb-6">
-                            <div className="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
-                                ✓
+                <MenuContext.Provider value={{
+                    user, isAdmin, setIsAdmin,
+                    cart, addToCart, removeFromCart, clearCart,
+                    selectedCategory, setSelectedCategory,
+                    isCartOpen, setIsCartOpen,
+                    customerInfo, setCustomerInfo,
+                    submitOrder
+                }}>
+                    {children}
+                </MenuContext.Provider>
+            );
+        }
+
+        // ==========================================
+        // 3. 元件：導覽列 (Navbar)
+        // ==========================================
+        function Navbar() {
+            const { cart, setIsCartOpen, isAdmin, setIsAdmin, user } = React.useContext(MenuContext);
+            const totalItems = cart.length;
+
+            return (
+                <nav className="bg-white shadow-md fixed top-0 w-full z-50 h-16 flex justify-between items-center px-4">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold">P</div>
+                        <h1 className="text-xl font-bold text-gray-800">PoPo 點餐</h1>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                        <button 
+                            onClick={() => setIsAdmin(!isAdmin)}
+                            className={`text-xs px-2 py-1 rounded border ${isAdmin ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500'}`}
+                        >
+                            {isAdmin ? '後台' : '前台'}
+                        </button>
+
+                        <button 
+                            className="relative p-2 text-gray-600"
+                            onClick={() => setIsCartOpen(true)}
+                        >
+                            <i className="fa-solid fa-cart-shopping text-xl"></i>
+                            {totalItems > 0 && (
+                                <span className="absolute top-0 right-0 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full animate-bounce">
+                                    {totalItems}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                </nav>
+            );
+        }
+
+        // ==========================================
+        // 4. 元件：分類選單 (CategoryNav)
+        // ==========================================
+        function CategoryNav() {
+            const { selectedCategory, setSelectedCategory } = React.useContext(MenuContext);
+
+            return (
+                <div className="fixed top-16 left-0 w-full bg-white border-b z-40 overflow-x-auto scrollbar-hide">
+                    <div className="flex px-2 py-2 gap-2 whitespace-nowrap">
+                        {CATEGORIES.map(cat => (
+                            <button
+                                key={cat.id}
+                                onClick={() => setSelectedCategory(cat.id)}
+                                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${
+                                    selectedCategory === cat.id 
+                                    ? 'bg-orange-500 text-white shadow-lg transform scale-105' 
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                            >
+                                <i className={`fa-solid ${cat.icon}`}></i>
+                                {cat.name}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // ==========================================
+        // 5. 元件：餐點詳細選項 (ItemModal) - 核心邏輯
+        // ==========================================
+        function ItemModal({ product, onClose, onConfirm }) {
+            // 初始化狀態
+            const [choices, setChoices] = React.useState({
+                meat: null,
+                starch: null,
+                starch_square: null,
+                pot_base: null,
+                sauce: null,
+                noodle: null,
+                spiciness: null,
+                drinkMode: 'basic', // basic (附餐) or upgrade (升級)
+                selectedDrink: null, // 用於升級或單點
+                basicDrink: BASIC_SIDE_DRINKS[0], // 預設附餐飲料
+                temp: null // 單點飲品的冷熱
+            });
+
+            // 計算總價
+            const calculateTotal = () => {
+                let total = product.price;
+
+                // 1. 加料價格
+                if (choices.meat) total += choices.meat.price;
+                
+                // 2. 飲品價格邏輯
+                if (product.drinkType === 'set') { // 套餐模式
+                    if (choices.drinkMode === 'upgrade' && choices.selectedDrink) {
+                        total += (choices.selectedDrink.price / 2); // 升級半價
+                    }
+                } else if (product.drinkType === 'light') { // 輕食/加購模式
+                    if (choices.drinkMode === 'upgrade' && choices.selectedDrink) {
+                        total += (choices.selectedDrink.price / 2); // 加購半價
+                    }
+                }
+                // 單點飲品本身不加價(已含在 product.price)，只需確認是否有選規格
+                
+                return total;
+            };
+
+            const handleConfirm = () => {
+                // 驗證必填
+                if (product.modifierRules.meat && !choices.meat) return alert('請選擇肉品');
+                if (product.modifierRules.starch && !choices.starch) return alert('請選擇副食');
+                if (product.modifierRules.pot_base && !choices.pot_base) return alert('請選擇湯底');
+                if (product.modifierRules.sauce && !choices.sauce) return alert('請選擇醬汁');
+                if (product.modifierRules.noodle && !choices.noodle) return alert('請選擇麵條');
+                
+                // 飲品驗證
+                let drinkDesc = '';
+                if (product.drinkType === 'set') {
+                    if (choices.drinkMode === 'basic') drinkDesc = choices.basicDrink.name;
+                    else if (choices.selectedDrink) drinkDesc = `${choices.selectedDrink.name} (升級)`;
+                    else return alert('請選擇飲品');
+                } else if (product.drinkType === 'light') {
+                    if (choices.drinkMode === 'upgrade') {
+                        if (!choices.selectedDrink) return alert('請選擇加購飲品');
+                        drinkDesc = `${choices.selectedDrink.name} (加購)`;
+                    } else {
+                        drinkDesc = '無飲品';
+                    }
+                } else if (product.categoryId === 'beverage') {
+                     // 單點飲品如果有分冷熱
+                     if (product.modifierRules.temp === 'both' && !choices.temp) return alert('請選擇冷熱');
+                     drinkDesc = choices.temp ? choices.temp : '';
+                }
+
+                onConfirm({
+                    ...product,
+                    finalPrice: calculateTotal(),
+                    details: choices,
+                    drinkDescription: drinkDesc,
+                    specDescription: [
+                        choices.meat?.name,
+                        choices.starch?.name || choices.starch_square?.name,
+                        choices.pot_base?.name,
+                        choices.sauce?.name,
+                        choices.noodle?.name,
+                        choices.spiciness?.name,
+                        product.categoryId === 'beverage' ? choices.temp : null
+                    ].filter(Boolean).join(', ')
+                });
+            };
+
+            // 渲染單選按鈕群組 (Radio Group)
+            const renderRadioGroup = (key, title, options) => {
+                if (!product.modifierRules[key]) return null;
+                return (
+                    <div className="mb-4">
+                        <h3 className="font-bold mb-2 text-gray-700">{title} <span className="text-red-500">*</span></h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            {options.map(opt => (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => setChoices(prev => ({ ...prev, [key]: opt }))}
+                                    className={`py-2 px-3 rounded border text-sm transition-all ${
+                                        choices[key]?.id === opt.id
+                                        ? 'bg-orange-100 border-orange-500 text-orange-700 font-bold'
+                                        : 'bg-white border-gray-200 text-gray-600'
+                                    }`}
+                                >
+                                    {opt.name} {opt.price > 0 && `(+${opt.price})`}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                    <div className="bg-white w-full sm:max-w-lg h-[90vh] sm:h-auto sm:max-h-[90vh] rounded-t-xl sm:rounded-xl flex flex-col shadow-2xl animate-slide-up">
+                        
+                        {/* Header */}
+                        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                            <div>
+                                <h2 className="text-lg font-bold">{product.name}</h2>
+                                <p className="text-orange-600 font-bold text-xl">${calculateTotal()}</p>
                             </div>
-                            <h1 className="text-2xl font-bold text-gray-800">系統修復成功</h1>
-                            <p className="text-gray-500 mt-2">Firebase 設定檔與引用路徑已修正</p>
+                            <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300">✕</button>
                         </div>
 
-                        {errorMsg && (
-                            <div className="bg-red-100 text-red-700 p-3 rounded mb-4 text-sm text-left">
-                                錯誤: {errorMsg}
-                            </div>
-                        )}
+                        {/* Content Scroll Area */}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {/* 一般選項 */}
+                            {renderRadioGroup('pot_base', '選擇鍋底', MODIFIER_OPTIONS.pot_base)}
+                            {renderRadioGroup('meat', '選擇肉品', MODIFIER_OPTIONS.meat)}
+                            {renderRadioGroup('starch', '選擇副食', MODIFIER_OPTIONS.starch)}
+                            {renderRadioGroup('starch_square', '選擇主食', MODIFIER_OPTIONS.starch_square)}
+                            {renderRadioGroup('sauce', '選擇醬汁', MODIFIER_OPTIONS.sauce)}
+                            {renderRadioGroup('noodle', '選擇麵條', MODIFIER_OPTIONS.noodle)}
+                            {renderRadioGroup('spiciness', '選擇辣度', MODIFIER_OPTIONS.spiciness)}
 
-                        <div className="border-t pt-6">
-                            {user ? (
-                                <div>
-                                    <p className="mb-4 font-medium text-lg">
-                                        嗨，{user.displayName || "匿名使用者"}！
-                                    </p>
-                                    <p className="text-sm text-gray-400 mb-6">UID: {user.uid}</p>
-                                    <button 
-                                        onClick={() => signOut(auth)}
-                                        className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition"
-                                    >
-                                        登出測試
-                                    </button>
+                            {/* 飲品邏輯區域 */}
+                            {(product.drinkType === 'set' || product.drinkType === 'light') && (
+                                <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                                    <h3 className="font-bold mb-3 text-blue-800 flex items-center gap-2">
+                                        <i className="fa-solid fa-mug-hot"></i> 飲品選擇
+                                    </h3>
+                                    
+                                    {/* 模式切換 Tabs */}
+                                    <div className="flex bg-white rounded-lg p-1 mb-4 border shadow-sm">
+                                        {product.drinkType === 'set' && (
+                                            <button 
+                                                className={`flex-1 py-2 text-sm rounded-md font-medium transition ${choices.drinkMode === 'basic' ? 'bg-blue-500 text-white shadow' : 'text-gray-500'}`}
+                                                onClick={() => setChoices(prev => ({...prev, drinkMode: 'basic'}))}
+                                            >
+                                                附餐飲料 (免費)
+                                            </button>
+                                        )}
+                                        <button 
+                                            className={`flex-1 py-2 text-sm rounded-md font-medium transition ${choices.drinkMode === 'upgrade' ? 'bg-blue-500 text-white shadow' : 'text-gray-500'}`}
+                                            onClick={() => setChoices(prev => ({...prev, drinkMode: 'upgrade'}))}
+                                        >
+                                            {product.drinkType === 'set' ? '升級其他飲品 (半價)' : '加購飲品 (半價)'}
+                                        </button>
+                                        {product.drinkType === 'light' && (
+                                            <button 
+                                                className={`flex-1 py-2 text-sm rounded-md font-medium transition ${choices.drinkMode === 'none' ? 'bg-blue-500 text-white shadow' : 'text-gray-500'}`}
+                                                onClick={() => setChoices(prev => ({...prev, drinkMode: 'none'}))}
+                                            >
+                                                不加購
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* 附餐飲料選單 */}
+                                    {choices.drinkMode === 'basic' && product.drinkType === 'set' && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {BASIC_SIDE_DRINKS.map(d => (
+                                                <button
+                                                    key={d.id}
+                                                    onClick={() => setChoices(prev => ({ ...prev, basicDrink: d }))}
+                                                    className={`py-2 px-2 text-sm rounded border ${choices.basicDrink?.id === d.id ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-white'}`}
+                                                >
+                                                    {d.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* 升級/加購飲料選單 (下拉式) */}
+                                    {choices.drinkMode === 'upgrade' && (
+                                        <div className="space-y-3">
+                                            <select 
+                                                className="w-full p-3 border rounded-lg bg-white"
+                                                onChange={(e) => {
+                                                    const drink = BEVERAGES_DATA.find(b => b.id === e.target.value);
+                                                    setChoices(prev => ({ ...prev, selectedDrink: drink }));
+                                                }}
+                                                value={choices.selectedDrink?.id || ''}
+                                            >
+                                                <option value="" disabled>-- 請選擇飲品 --</option>
+                                                {BEVERAGES_DATA.map(b => (
+                                                    <option key={b.id} value={b.id}>
+                                                        {b.name} (原價${b.price} ➜ 加購價${b.price/2})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            
+                                            {/* 顯示選擇結果與溫度限制 */}
+                                            {choices.selectedDrink && (
+                                                 <div className="text-sm text-gray-500 mt-2">
+                                                    注意：此飲品供應 {choices.selectedDrink.temp === 'both' ? '冷/熱' : choices.selectedDrink.temp === 'hotOnly' ? '僅限熱飲' : '僅限冰飲'}
+                                                 </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <button 
-                                        onClick={handleGoogleLogin}
-                                        className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition flex items-center justify-center gap-2"
-                                    >
-                                        測試 Google 登入
-                                    </button>
-                                    <button 
-                                        onClick={handleAnonymousLogin}
-                                        className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded transition"
-                                    >
-                                        測試匿名登入
-                                    </button>
+                            )}
+
+                            {/* 單點飲品冷熱選擇 */}
+                            {product.categoryId === 'beverage' && product.modifierRules.temp === 'both' && (
+                                <div className="mb-4">
+                                    <h3 className="font-bold mb-2">溫度</h3>
+                                    <div className="flex gap-4">
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name="temp" value="冰" onChange={(e) => setChoices(prev => ({...prev, temp: e.target.value}))} /> 冰
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name="temp" value="熱" onChange={(e) => setChoices(prev => ({...prev, temp: e.target.value}))} /> 熱
+                                        </label>
+                                    </div>
                                 </div>
                             )}
                         </div>
-                        
-                        <div className="mt-8 text-xs text-gray-400 bg-gray-50 p-3 rounded text-left">
-                            <p className="font-bold mb-1">下一步：</p>
-                            <p>確認登入按鈕可以按之後，請將原本的 <code>function App() ...</code> 程式碼貼回來覆蓋掉目前的測試畫面。</p>
+
+                        {/* Footer Action */}
+                        <div className="p-4 border-t bg-white safe-area-bottom">
+                            <button 
+                                onClick={handleConfirm}
+                                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transform transition active:scale-95 flex justify-between items-center"
+                            >
+                                <span>加入購物車</span>
+                                <span>${calculateTotal()}</span>
+                            </button>
                         </div>
                     </div>
                 </div>
             );
         }
 
+        // ==========================================
+        // 6. 元件：前台主畫面
+        // ==========================================
+        function CustomerView() {
+            const { selectedCategory, addToCart } = React.useContext(MenuContext);
+            const [viewingProduct, setViewingProduct] = React.useState(null);
+
+            const displayedProducts = PRODUCTS_DATA.filter(p => p.categoryId === selectedCategory);
+
+            return (
+                <div className="pt-32 pb-24 px-4 max-w-5xl mx-auto min-h-screen overflow-y-auto">
+                    <h2 className="text-xl font-bold mb-4 text-gray-700 pl-2 border-l-4 border-orange-500">
+                        {CATEGORIES.find(c => c.id === selectedCategory)?.name}
+                    </h2>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {displayedProducts.map(product => (
+                            <div 
+                                key={product.id} 
+                                onClick={() => setViewingProduct(product)}
+                                className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:shadow-md transition"
+                            >
+                                <div>
+                                    <h3 className="font-bold text-lg text-gray-800">{product.name}</h3>
+                                    <p className="text-orange-600 font-medium mt-1">${product.price}</p>
+                                </div>
+                                <button className="w-8 h-8 bg-orange-100 text-orange-500 rounded-full flex items-center justify-center">
+                                    <i className="fa-solid fa-plus"></i>
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* 彈出視窗 */}
+                    {viewingProduct && (
+                        <ItemModal 
+                            product={viewingProduct}
+                            onClose={() => setViewingProduct(null)}
+                            onConfirm={(item) => {
+                                addToCart(item);
+                                setViewingProduct(null);
+                            }}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // ==========================================
+        // 7. 元件：購物車側邊欄 (CartSidebar)
+        // ==========================================
+        function CartSidebar() {
+            const { cart, removeFromCart, isCartOpen, setIsCartOpen, customerInfo, setCustomerInfo, submitOrder } = React.useContext(MenuContext);
+            const total = cart.reduce((sum, item) => sum + item.finalPrice, 0);
+
+            if (!isCartOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-50 flex justify-end">
+                    {/* 背景遮罩 */}
+                    <div className="absolute inset-0 bg-black bg-opacity-30 backdrop-blur-sm" onClick={() => setIsCartOpen(false)}></div>
+                    
+                    {/* 側邊欄本體 */}
+                    <div className="relative bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-slide-left">
+                        <div className="p-4 bg-orange-500 text-white flex justify-between items-center shadow-md">
+                            <h2 className="text-lg font-bold"><i className="fa-solid fa-receipt mr-2"></i>購物車</h2>
+                            <button onClick={() => setIsCartOpen(false)} className="text-white hover:text-gray-200">✕ 關閉</button>
+                        </div>
+
+                        {/* 顧客資訊輸入 */}
+                        <div className="p-4 bg-orange-50 border-b">
+                            <input 
+                                type="text" 
+                                placeholder="請輸入桌號 (必填)" 
+                                className="w-full p-2 border border-orange-200 rounded mb-2 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                value={customerInfo.tableNo}
+                                onChange={e => setCustomerInfo({...customerInfo, tableNo: e.target.value})}
+                            />
+                            <textarea 
+                                placeholder="整單備註 (選填)" 
+                                className="w-full p-2 border border-orange-200 rounded text-sm h-16 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                value={customerInfo.notes}
+                                onChange={e => setCustomerInfo({...customerInfo, notes: e.target.value})}
+                            ></textarea>
+                        </div>
+
+                        {/* 訂單列表 */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {cart.length === 0 ? (
+                                <div className="text-center text-gray-400 mt-20">
+                                    <i className="fa-solid fa-basket-shopping text-6xl mb-4 opacity-30"></i>
+                                    <p>還沒有點餐喔</p>
+                                </div>
+                            ) : (
+                                cart.map(item => (
+                                    <div key={item.cartId} className="bg-white border rounded-lg p-3 shadow-sm relative">
+                                        <div className="flex justify-between items-start">
+                                            <h3 className="font-bold text-gray-800">{item.name}</h3>
+                                            <span className="font-mono font-bold text-orange-600">${item.finalPrice}</span>
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1 space-y-1">
+                                            {item.specDescription && <p>規格: {item.specDescription}</p>}
+                                            {item.drinkDescription && <p className="text-blue-600"><i className="fa-solid fa-mug-hot text-[10px]"></i> {item.drinkDescription}</p>}
+                                        </div>
+                                        <button 
+                                            onClick={() => removeFromCart(item.cartId)}
+                                            className="absolute bottom-2 right-2 text-red-400 hover:text-red-600 text-xs px-2 py-1"
+                                        >
+                                            <i className="fa-solid fa-trash"></i> 移除
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* 底部結帳 */}
+                        <div className="p-4 border-t bg-gray-50">
+                            <div className="flex justify-between items-center mb-4 text-lg font-bold">
+                                <span>總金額</span>
+                                <span className="text-orange-600">${total}</span>
+                            </div>
+                            <button 
+                                onClick={submitOrder}
+                                className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 shadow-lg transition disabled:bg-gray-400"
+                                disabled={cart.length === 0}
+                            >
+                                確認送出訂單
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ==========================================
+        // 8. 元件：後台管理儀表板 (AdminDashboard)
+        // ==========================================
+        function AdminDashboard() {
+            const [orders, setOrders] = React.useState([]);
+
+            React.useEffect(() => {
+                // 訂閱訂單變化
+                const q = query(collection(db, "orders"), orderBy("timestamp", "desc"));
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const orderData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    setOrders(orderData);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            // 刪除/完成訂單
+            const completeOrder = async (orderId) => {
+                if(!confirm('確認此訂單已完成並封存？')) return;
+                try {
+                    await deleteDoc(doc(db, "orders", orderId));
+                } catch (e) {
+                    alert("操作失敗: " + e.message);
+                }
+            };
+
+            return (
+                <div className="pt-20 px-4 max-w-6xl mx-auto min-h-screen bg-gray-100 overflow-y-auto pb-20">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-700 border-l-8 border-blue-600 pl-3">
+                        廚房管理系統 (KDS)
+                    </h2>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {orders.map(order => (
+                            <div key={order.id} className="bg-white rounded-xl shadow-md border-t-4 border-blue-500 overflow-hidden flex flex-col">
+                                <div className="bg-blue-50 p-3 flex justify-between items-center border-b">
+                                    <span className="text-xl font-black text-blue-800">桌號 {order.tableNo}</span>
+                                    <span className="text-xs text-gray-500">
+                                        {order.timestamp?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
+                                </div>
+                                
+                                <div className="p-4 flex-1">
+                                    {order.notes && (
+                                        <div className="bg-yellow-100 text-yellow-800 text-sm p-2 rounded mb-3">
+                                            <i className="fa-solid fa-note-sticky mr-1"></i>備註: {order.notes}
+                                        </div>
+                                    )}
+                                    <ul className="space-y-3">
+                                        {order.items.map((item, idx) => (
+                                            <li key={idx} className="border-b pb-2 last:border-0">
+                                                <div className="flex justify-between font-bold text-gray-800">
+                                                    <span>{item.name}</span>
+                                                </div>
+                                                <div className="text-sm text-gray-500 pl-2 border-l-2 border-gray-200 mt-1">
+                                                    {item.specDescription && <div>{item.specDescription}</div>}
+                                                    {item.drinkDescription && <div className="text-blue-600">{item.drinkDescription}</div>}
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+
+                                <div className="p-3 bg-gray-50 border-t flex justify-between items-center">
+                                    <span className="font-bold text-gray-600">總計 ${order.total}</span>
+                                    <button 
+                                        onClick={() => completeOrder(order.id)}
+                                        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow transition"
+                                    >
+                                        完成訂單
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                        
+                        {orders.length === 0 && (
+                            <div className="col-span-full text-center text-gray-400 py-20">
+                                <i className="fa-solid fa-mug-hot text-6xl mb-4"></i>
+                                <p className="text-xl">目前沒有待處理訂單</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // ==========================================
+        // 9. 主程式 App
+        // ==========================================
+        function App() {
+            return (
+                <MenuProvider>
+                    <MainContent />
+                </MenuProvider>
+            );
+        }
+
+        function MainContent() {
+            const { isAdmin, user } = React.useContext(MenuContext);
+
+            // 如果未登入，顯示登入畫面 (使用您之前修好的邏輯)
+            if (!user) {
+                return <LoginScreen />;
+            }
+
+            return (
+                <div className="h-full bg-gray-100">
+                    <Navbar />
+                    {isAdmin ? (
+                        <AdminDashboard />
+                    ) : (
+                        <>
+                            <CategoryNav />
+                            <CustomerView />
+                            <CartSidebar />
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        // 登入畫面元件
+        function LoginScreen() {
+            const handleGoogleLogin = async () => {
+                try {
+                    const provider = new GoogleAuthProvider();
+                    await signInWithPopup(auth, provider);
+                } catch (error) {
+                    alert("登入失敗: " + error.message);
+                }
+            };
+
+            const handleAnonymousLogin = async () => {
+                try {
+                    await signInAnonymously(auth);
+                } catch (error) {
+                    alert("匿名登入失敗: " + error.message);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-100">
+                    <div className="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full text-center">
+                        <div className="w-20 h-20 bg-orange-500 rounded-full flex items-center justify-center text-white text-3xl font-bold mx-auto mb-6">P</div>
+                        <h1 className="text-2xl font-bold text-gray-800 mb-2">歡迎來到 PoPo 點餐</h1>
+                        <p className="text-gray-500 mb-8">請選擇登入方式以開始點餐</p>
+                        
+                        <button onClick={handleGoogleLogin} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg mb-3 shadow hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                            <i className="fa-brands fa-google"></i> Google 登入 (推薦)
+                        </button>
+                        <button onClick={handleAnonymousLogin} className="w-full bg-gray-200 text-gray-700 font-bold py-3 rounded-lg hover:bg-gray-300 transition">
+                            訪客直接點餐
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // 啟動 React
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
 </body>
 </html>
-
