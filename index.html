@@ -35,10 +35,15 @@
 
     <!-- Firebase SDK 設定區 (使用 ES Module) -->
     <script type="module">
-        // 引入 GoogleAuthProvider 與 signInWithPopup
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    // --- 請直接複製這一段，完全覆蓋掉您原本最上面的 import 區塊 ---
+
+    // 1. 修正網址格式 (移除了多餘的括號)
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    
+    // 2. 補上了 signInAnonymously 以修復 ReferenceError
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    
+    import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // ... 接著是您的 firebaseConfig 設定 ...
 
@@ -487,6 +492,7 @@ import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, q
     </script>
 </body>
 </html>
+
 
 
 
