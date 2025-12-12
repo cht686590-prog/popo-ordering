@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>普普風雲端點餐 | Popo Cloud</title>
+    <!-- 載入 Tailwind CSS (樣式庫) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 React 和 ReactDOM (核心框架) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 載入 Babel (讓瀏覽器看不懂的 JSX 變成看得懂的 JS) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 設定 Tailwind 主題色 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        amber: { 50: '#fffbf2', 100: '#fef3c7', 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隱藏卷軸但保留功能 */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-[#fffbf2] text-gray-800">
+    <div id="root"></div>
+
+    <!-- Firebase SDK 設定區 (使用 ES Module) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // ==========================================
+        // TODO: 請在此填入 Firebase 設定 (從 Console 複製)
+        // 注意：請確保您已將下方的值替換為您專案的實際設定
+        // ==========================================
+        const firebaseConfig = {
+  apiKey: "AIzaSyDYu_gtcp25wx4S25LubmWSQGRgxLrppy0",
+  authDomain: "popo-ordering.firebaseapp.com",
+  projectId: "popo-ordering",
+  storageBucket: "popo-ordering.firebasestorage.app",
+  messagingSenderId: "44845700960",
+  appId: "1:44845700960:web:b6fd95203d627cacb67005"
+        };
+        // ==========================================
+
+        // 檢查設定是否已經填寫
+        const isConfigConfigured = !firebaseConfig.apiKey.includes("請貼上");
+
+        // 初始化 Firebase 並掛載到 window 物件，讓下面的 Babel 腳本可以使用
+        if (isConfigConfigured) {
+            try {
+                const app = initializeApp(firebaseConfig);
+                window.auth = getAuth(app);
+                window.db = getFirestore(app);
+                console.log("Firebase initialized successfully");
+            } catch (error) {
+                console.error("Firebase initialization error:", error);
+                window.firebaseInitError = error.message;
+            }
+        } else {
+            console.warn("Firebase config is missing placeholders");
+        }
+        
+        // 掛載 Firebase 方法與狀態
+        window.isConfigConfigured = isConfigConfigured;
+        window.firebaseMethods = {
+            signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut,
+            collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy
+        };
+    </script>
+
+    <!-- 主程式邏輯 (React + Babel) -->
+    <script type="text/babel">
+        const { useState, useEffect, useContext, createContext, useMemo } = React;
+        
+        // --- 簡易圖示元件 ---
+        const Icons = {
+            Coffee: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></svg>,
+            ShoppingCart: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>,
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 18 18"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>,
+            ChefHat: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" x2="18" y1="17" y2="17"/></svg>,
+            User: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+            LogOut: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>,
+            Utensils: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>,
+            Alert: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+        };
+
+        // --- 資料設定 (Mock Data) ---
+        const CATEGORIES = [
+            { id: 'hotpot', name: '幸福鍋物', icon: Icons.Utensils },
+            { id: 'pasta', name: '義大利麵', icon: Icons.Utensils },
+            { id: 'beverage', name: '飲品單點', icon: Icons.Coffee },
+        ];
+        const PRODUCTS = [
+            { id: 'p1', categoryId: 'hotpot', name: '日式昆布鍋', price: 330 },
+            { id: 'p2', categoryId: 'hotpot', name: '韓式泡菜鍋', price: 330 },
+            { id: 'p3', categoryId: 'pasta', name: '煙燻鴨胸麵', price: 350 },
+            { id: 'p4', categoryId: 'pasta', name: '迷迭雞腿麵', price: 340 },
+            { id: 'd1', categoryId: 'beverage', name: '美式咖啡', price: 110 },
+            { id: 'd2', categoryId: 'beverage', name: '特選紅茶', price: 100 },
+        ];
+
+        // --- Context ---
+        const MenuContext = createContext();
+
+        const MenuProvider = ({ children }) => {
+            const [user, setUser] = useState(null);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [cart, setCart] = useState([]);
+            const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].id);
+            const [isCartOpen, setIsCartOpen] = useState(false);
+            const [configError, setConfigError] = useState(null);
+            
+            // 監聽 Auth 狀態
+            useEffect(() => {
+                // 1. 檢查 Firebase 設定是否已填寫
+                if (!window.isConfigConfigured) {
+                    setConfigError("請編輯 index.html 檔案，填入正確的 Firebase Config 設定值。");
+                    return;
+                }
+                if (window.firebaseInitError) {
+                    setConfigError("Firebase 初始化失敗：" + window.firebaseInitError);
+                    return;
+                }
+
+                const { auth, firebaseMethods } = window;
+                if (!auth) return;
+                
+                // 2. 匿名登入邏輯
+                const unsubscribe = firebaseMethods.onAuthStateChanged(auth, (currentUser) => {
+                    if (currentUser) {
+                        setUser(currentUser);
+                        setIsAdmin(!!currentUser.email); 
+                    } else {
+                        // 嘗試匿名登入，並捕捉特定錯誤
+                        firebaseMethods.signInAnonymously(auth).catch((error) => {
+                            console.error("Login Error:", error);
+                            if (error.code === 'auth/network-request-failed') {
+                                setConfigError("無法連線到 Firebase。\n請檢查：\n1. 您的網路連線是否正常\n2. 公司防火牆是否阻擋\n3. Firebase Config 的 apiKey 或 authDomain 是否正確");
+                            } else if (error.code === 'auth/invalid-api-key') {
+                                setConfigError("無效的 API Key。請檢查 index.html 中的 firebaseConfig 是否填寫正確。");
+                            } else {
+                                setConfigError(`登入錯誤: ${error.message}`);
+                            }
+                        });
+                    }
+                });
+
+                return () => unsubscribe();
+            }, []);
+
+            const addToCart = (item) => {
+                setCart([...cart, { ...item, cartId: Date.now() }]);
+                setIsCartOpen(true);
+            };
+
+            const removeFromCart = (cartId) => setCart(cart.filter(i => i.cartId !== cartId));
+            const clearCart = () => setCart([]);
+
+            // 管理員登入
+            const loginAdmin = async (email, password) => {
+                try {
+                    await window.firebaseMethods.signInWithEmailAndPassword(window.auth, email, password);
+                    return true;
+                } catch (e) {
+                    alert("登入失敗: " + e.message);
+                    return false;
+                }
+            };
+            
+            const logout = async () => {
+                await window.firebaseMethods.signOut(window.auth);
+            }
+
+            // 如果有設定錯誤，顯示全版錯誤提示
+            if (configError) {
+                return (
+                    <div className="fixed inset-0 bg-gray-800 text-white flex flex-col items-center justify-center p-8 text-center z-[100]">
+                        <div className="bg-red-500 p-4 rounded-full mb-4 animate-bounce">
+                            <Icons.Alert />
+                        </div>
+                        <h2 className="text-2xl font-bold mb-4">系統設定未完成</h2>
+                        <div className="bg-gray-700 p-6 rounded-xl max-w-lg text-left overflow-auto max-h-[60vh] border border-gray-600">
+                            <p className="whitespace-pre-line font-mono text-sm leading-relaxed text-amber-300">
+                                {configError}
+                            </p>
+                            <hr className="my-4 border-gray-600"/>
+                            <p className="text-sm text-gray-300">
+                                <strong>如何解決：</strong><br/>
+                                1. 使用記事本或文字編輯器開啟 <code>index.html</code>。<br/>
+                                2. 搜尋 <code>const firebaseConfig</code>。<br/>
+                                3. 將 Firebase Console 中的數值複製貼上到對應欄位。<br/>
+                                4. 儲存檔案並重新整理網頁。
+                            </p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <MenuContext.Provider value={{
+                    user, isAdmin, cart, addToCart, removeFromCart, clearCart,
+                    selectedCategory, setSelectedCategory, isCartOpen, setIsCartOpen,
+                    loginAdmin, logout
+                }}>
+                    {children}
+                </MenuContext.Provider>
+            );
+        };
+
+        // --- Components ---
+        
+        // 1. 導覽列
+        const Navbar = () => {
+            const { cart, setIsCartOpen, isAdmin, logout } = useContext(MenuContext);
+            const [showLogin, setShowLogin] = useState(false);
+            const [email, setEmail] = useState("");
+            const [password, setPassword] = useState("");
+            const { loginAdmin } = useContext(MenuContext);
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                if(await loginAdmin(email, password)) setShowLogin(false);
+            };
+
+            return (
+                <nav className="bg-amber-500 text-white p-4 sticky top-0 z-50 shadow-md flex justify-between items-center">
+                    <div className="font-black text-xl flex items-center">
+                        <div className="bg-white text-amber-500 w-8 h-8 rounded-lg flex items-center justify-center mr-2">P</div>
+                        普普風
+                    </div>
+                    <div className="flex items-center space-x-3">
+                        {isAdmin ? (
+                            <div className="flex items-center">
+                                <span className="mr-2 text-sm font-bold bg-amber-600 px-2 py-1 rounded">管理員模式</span>
+                                <button onClick={logout} className="p-2 bg-red-500 rounded-lg"><Icons.LogOut /></button>
+                            </div>
+                        ) : (
+                            <>
+                                <button onClick={() => setShowLogin(true)} className="p-2 bg-amber-600 rounded-lg text-sm font-bold">後台</button>
+                                <button onClick={() => setIsCartOpen(true)} className="relative p-2 bg-white/20 rounded-full">
+                                    <Icons.ShoppingCart />
+                                    {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 w-5 h-5 text-xs flex items-center justify-center rounded-full border border-white font-bold">{cart.length}</span>}
+                                </button>
+                            </>
+                        )}
+                    </div>
+
+                    {/* 簡易登入 Modal */}
+                    {showLogin && (
+                        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                            <div className="bg-white p-6 rounded-xl w-full max-w-sm text-gray-800">
+                                <h3 className="text-xl font-bold mb-4">管理員登入</h3>
+                                <form onSubmit={handleLogin} className="space-y-3">
+                                    <input type="email" placeholder="Email" className="w-full border p-2 rounded" value={email} onChange={e=>setEmail(e.target.value)} required />
+                                    <input type="password" placeholder="密碼" className="w-full border p-2 rounded" value={password} onChange={e=>setPassword(e.target.value)} required />
+                                    <button type="submit" className="w-full bg-amber-500 text-white font-bold py-2 rounded">登入</button>
+                                    <button type="button" onClick={()=>setShowLogin(false)} className="w-full text-gray-400 text-sm">取消</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </nav>
+            );
+        };
+
+        // 2. 產品列表
+        const ProductList = () => {
+            const { addToCart, selectedCategory, setSelectedCategory } = useContext(MenuContext);
+            const filtered = PRODUCTS.filter(p => p.categoryId === selectedCategory);
+
+            return (
+                <div className="p-4 max-w-4xl mx-auto pb-24">
+                    {/* 分類按鈕 */}
+                    <div className="flex space-x-2 overflow-x-auto pb-4 mb-2 scrollbar-hide">
+                        {CATEGORIES.map(cat => (
+                            <button key={cat.id} 
+                                onClick={() => setSelectedCategory(cat.id)}
+                                className={`flex items-center px-4 py-2 rounded-full font-bold whitespace-nowrap border-2 ${selectedCategory === cat.id ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-500 border-transparent'}`}>
+                                <cat.icon /> <span className="ml-2">{cat.name}</span>
+                            </button>
+                        ))}
+                    </div>
+                    {/* 產品卡片 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {filtered.map(p => (
+                            <div key={p.id} className="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center border border-gray-100 hover:border-amber-300 transition">
+                                <div>
+                                    <h3 className="font-bold text-lg">{p.name}</h3>
+                                    <p className="text-amber-600 font-black text-xl">${p.price}</p>
+                                </div>
+                                <button onClick={() => addToCart(p)} className="bg-amber-100 text-amber-600 p-2 rounded-full hover:bg-amber-500 hover:text-white transition">
+                                    <Icons.Plus />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // 3. 購物車與送出訂單
+        const CartSidebar = () => {
+            const { cart, removeFromCart, clearCart, isCartOpen, setIsCartOpen, user } = useContext(MenuContext);
+            const [name, setName] = useState("");
+            const [isSubmitting, setIsSubmitting] = useState(false);
+
+            if (!isCartOpen) return null;
+
+            const total = cart.reduce((acc, item) => acc + item.price, 0);
+
+            const submitOrder = async () => {
+                if(!name) return alert("請輸入姓名");
+                setIsSubmitting(true);
+                const { collection, addDoc, serverTimestamp, db } = window.firebaseMethods;
+                
+                try {
+                    await addDoc(collection(window.db, "orders"), {
+                        userName: name,
+                        items: cart,
+                        totalAmount: total,
+                        userId: user.uid,
+                        createdAt: serverTimestamp()
+                    });
+                    alert("訂單已送出！");
+                    clearCart();
+                    setIsCartOpen(false);
+                } catch(e) {
+                    alert("錯誤: " + e.message);
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex justify-end">
+                    <div className="absolute inset-0 bg-black/50" onClick={() => setIsCartOpen(false)}></div>
+                    <div className="bg-white w-full max-w-sm h-full relative z-10 flex flex-col p-4">
+                        <div className="flex justify-between items-center mb-4 pb-4 border-b">
+                            <h2 className="text-xl font-bold flex items-center"><Icons.ShoppingCart /> <span className="ml-2">購物車</span></h2>
+                            <button onClick={() => setIsCartOpen(false)}><Icons.X /></button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto">
+                            {cart.length === 0 ? <p className="text-gray-400 text-center mt-10">空的...</p> : 
+                            cart.map(item => (
+                                <div key={item.cartId} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg mb-2">
+                                    <div>
+                                        <div className="font-bold">{item.name}</div>
+                                        <div className="text-amber-600">${item.price}</div>
+                                    </div>
+                                    <button onClick={() => removeFromCart(item.cartId)} className="text-gray-400 hover:text-red-500"><Icons.Trash2 /></button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="border-t pt-4 mt-4 space-y-3">
+                            <input type="text" placeholder="您的姓名 / 桌號" className="w-full border-2 border-amber-200 p-3 rounded-xl font-bold text-center" value={name} onChange={e=>setName(e.target.value)} />
+                            <div className="flex justify-between text-xl font-bold">
+                                <span>總計</span>
+                                <span className="text-amber-600">${total}</span>
+                            </div>
+                            <button onClick={submitOrder} disabled={cart.length===0 || isSubmitting} className="w-full bg-amber-500 text-white font-bold py-3 rounded-xl disabled:bg-gray-300">
+                                {isSubmitting ? "傳送中..." : "確認下單"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. 後台管理介面
+        const AdminDashboard = () => {
+            const [orders, setOrders] = useState([]);
+
+            useEffect(() => {
+                const { collection, query, orderBy, onSnapshot, db } = window.firebaseMethods;
+                const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+                
+                // 即時監聽訂單
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                }, (error) => {
+                    console.error("權限不足:", error);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            const handleDelete = async (id) => {
+                if(!confirm("確定刪除?")) return;
+                const { deleteDoc, doc, db } = window.firebaseMethods;
+                await deleteDoc(doc(db, "orders", id));
+            };
+
+            return (
+                <div className="p-4 max-w-4xl mx-auto">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center text-gray-800">
+                        <Icons.ChefHat /> <span className="ml-2">廚房訂單看板</span>
+                    </h2>
+                    <div className="grid gap-4">
+                        {orders.map(order => (
+                            <div key={order.id} className="bg-white border-l-4 border-amber-500 rounded-lg shadow-sm p-4 hover:shadow-md transition">
+                                <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
+                                    <div>
+                                        <span className="font-bold text-lg text-gray-800">{order.userName}</span>
+                                        <span className="text-xs text-gray-400 ml-2 block">
+                                            {order.createdAt ? new Date(order.createdAt.seconds * 1000).toLocaleTimeString() : '更新中...'}
+                                        </span>
+                                    </div>
+                                    <button onClick={() => handleDelete(order.id)} className="text-red-400 hover:text-red-600"><Icons.Trash2 /></button>
+                                </div>
+                                <ul className="space-y-1 mb-3">
+                                    {order.items.map((item, idx) => (
+                                        <li key={idx} className="flex justify-between text-gray-600">
+                                            <span>{item.name}</span>
+                                            <span className="font-mono">${item.price}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <div className="text-right font-black text-xl text-amber-600 border-t pt-2">
+                                    ${order.totalAmount}
+                                </div>
+                            </div>
+                        ))}
+                        {orders.length === 0 && <div className="text-center text-gray-400 py-10">目前沒有訂單</div>}
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const { isAdmin } = useContext(MenuContext);
+            return (
+                <div className="min-h-screen">
+                    <Navbar />
+                    {isAdmin ? <AdminDashboard /> : <ProductList />}
+                    <CartSidebar />
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <MenuProvider>
+                <App />
+            </MenuProvider>
+        );
+    </script>
+</body>
+</html>
