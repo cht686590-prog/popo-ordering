@@ -39,12 +39,7 @@
        import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js)";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js)";
 import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js)";
-// 初始化 App
-const app = initializeApp(firebaseConfig);
 
-// 初始化 Auth (這裡最重要，版本一致後這裡就不會報錯了)
-const auth = getAuth(app); 
-const db = getFirestore(app);
 // ... 接著是您的 firebaseConfig 設定 ...
 
         // ==========================================
@@ -492,5 +487,6 @@ const db = getFirestore(app);
     </script>
 </body>
 </html>
+
 
 
